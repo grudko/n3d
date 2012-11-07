@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os, sys, cmd
 from ConfigParser import ConfigParser
-from shell_command import shell_call as run
+from shell_command import ShellCommand 
 import logging
 import threading
 from datetime import datetime
@@ -55,11 +55,15 @@ class DeployCmd(cmd.Cmd):
             return False
         else:
             stage = self.stages[self.stage_nums[self.next_stage]]
+            time_init = datetime.now()
             logWrap = LogWrapper(log, logging.INFO)
             self.cur_status = \
-                 run(stage[action], stdout = logWrap, stderr = logWrap)
+      ShellCommand(stage[action], stdout=logWrap, stderr=logWrap).shell_call()
             logWrap.close()
-            log.info("Exit status: %s" % self.cur_status)
+            time_done = datetime.now()
+            run_time = (time_done - time_init)
+            log.info("Exit status: %s, run time: %s" % \
+                             (self.cur_status, run_time ) )
             return True
 
     def do_list(self,line):
