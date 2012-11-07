@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os, sys, cmd
 from ConfigParser import ConfigParser
+from optparse import OptionParser
 from shell_command import ShellCommand 
 import logging
 import threading
@@ -28,8 +29,12 @@ class DeployCmd(cmd.Cmd):
             nxt = "None"
         self.prompt = "stage | cur: %s | next: %s > " % (self.cur_stage, nxt)
 
+    def cmdloop(self, intro=None, options=None):
+        self.options = options
+        return cmd.Cmd.cmdloop(self, intro)
+
     def preloop(self):
-        for root, dirs, files in os.walk('stages'):
+        for root, dirs, files in os.walk(self.options.stages_dir):
             for stage_f_name in files:
                 stage_name, stage_f_ext = os.path.splitext(stage_f_name)
                 stage_action = stage_f_ext[1:]
@@ -47,6 +52,8 @@ class DeployCmd(cmd.Cmd):
             if self.cur_stage < 0:
                 self.cur_stage = None
         self.update_prompt()
+        if self.options.run:
+            self.cmdqueue.append('continue')
 
     def apply_stage(self, action):
         if self.next_stage == len(self.stages):
@@ -92,6 +99,11 @@ class DeployCmd(cmd.Cmd):
         self.cur_status = 0
         while self.cur_status == 0:
             self.do_next(line)
+        self.update_prompt()
+        if self.next_stage == len(self.stages) and self.options.run:
+            if os.path.exists('deploy_process.ini'):
+                os.unlink('deploy_process.ini')
+            return True
 
     def do_next(self, line):
         """ Apply next stage """
@@ -124,7 +136,7 @@ class DeployCmd(cmd.Cmd):
             self.next_stage=stage_num
             self.do_next('')
         else:
-            print('No such stage')
+            log.error('No such stage')
 
     def completenames(self, text, *ignored):
         names = ['continue','next','rollback','tryagain','list','exit','goto','help']
@@ -136,7 +148,12 @@ class DeployCmd(cmd.Cmd):
 
     def do_exit(self, line):
         return True
-
+ 
+    def precmd(self,line):
+        if line != '':
+            log.info("The command is: %s", line)
+        return cmd.Cmd.precmd(self, line)
+ 
     def postcmd(self,stop,line):
         self.update_prompt()
         return cmd.Cmd.postcmd(self, stop, line)
@@ -173,6 +190,15 @@ class LogWrapper(threading.Thread):
         """
         os.close(self.fdWrite)
 
-
-DeployCmd().cmdloop()
+if __name__ == '__main__':
+    optionparser = OptionParser(usage="usage: %prog [options]")
+    optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
+                            default="./stages",
+                            help="stages root directory [ default: %default ]")
+    optionparser.add_option("-r", "--run", action="store_true", dest="run",\
+                            default=False,
+                            help="run all stages while stage exit status is 0,\
+                            exit after all done stages")
+    (options, args) = optionparser.parse_args()
+    DeployCmd().cmdloop(options=options)
 
