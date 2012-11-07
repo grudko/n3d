@@ -1,27 +1,16 @@
 #!/usr/bin/env python
 import os, sys, cmd
 from ConfigParser import ConfigParser
-from subprocess import call as run
+from shell_command import shell_call as run
 import logging
 import threading
+from datetime import datetime
 
 logging.basicConfig(filename='deploy_process.log', format='%(asctime)s %(message)s', level = logging.DEBUG)
 log = logging.getLogger(__name__)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 log.addHandler(ch)
-
-class Stage(object):
-    update_fname = ""
-    rollback_fname = ""
-    def __init__(self, name):
-        self.name = name
-    def append_action(self, action_fname):
-        fext = os.path.splitext(action_fname)[1]
-        if fext == '.update':
-            self.update_fname = action_fname
-        if fext == '.rollback':
-            self.rollback_fname = action_fname
 
 class DeployCmd(cmd.Cmd):
 
@@ -32,7 +21,6 @@ class DeployCmd(cmd.Cmd):
     cur_stage = None
     cur_status = None
 
-#    prompt = "stage cur: None nxt: 0 > "
     def update_prompt(self):
         if self.next_stage < len(self.stages):
             nxt = self.next_stage
@@ -44,20 +32,21 @@ class DeployCmd(cmd.Cmd):
         for root, dirs, files in os.walk('stages'):
             for stage_f_name in files:
                 stage_name, stage_f_ext = os.path.splitext(stage_f_name)
-                if stage_f_ext in ('.update', '.rollback'):
+                stage_action = stage_f_ext[1:]
+                if stage_action in ('update', 'rollback'):
                     if stage_name not in self.stages:
-                        self.stages[stage_name] = Stage(stage_name)
-                    self.stages[stage_name].append_action(os.path.join(root,stage_f_name))
+                        self.stages[stage_name] = dict()
+                    self.stages[stage_name][stage_action] = \
+                                            os.path.join(root,stage_f_name)
         self.stage_nums = sorted(self.stages.keys())
-        if os.path.exists('deploy_process'):
+        if os.path.exists('deploy_process.ini'):
             conf = ConfigParser()
-	    conf.read('deploy_process')
+	    conf.read('deploy_process.ini')
             self.cur_stage = int(conf.get('position','current'))
             self.next_stage = self.cur_stage+1
             if self.cur_stage < 0:
                 self.cur_stage = None
         self.update_prompt()
-
 
     def apply_stage(self, action):
         if self.next_stage == len(self.stages):
@@ -67,30 +56,32 @@ class DeployCmd(cmd.Cmd):
         else:
             stage = self.stages[self.stage_nums[self.next_stage]]
             logWrap = LogWrapper(log, logging.INFO)
-            self.cur_status = 0
-            if action == 'update':
-                self.cur_status = run(stage.update_fname, stdout = logWrap, stderr = logWrap)
-            elif action == 'rollback':
-                self.cur_status = run(stage.rollback_fname, stdout = logWrap, stderr = logWrap)
-            log.info("Exit status: %s" % self.cur_status)
+            self.cur_status = \
+                 run(stage[action], stdout = logWrap, stderr = logWrap)
             logWrap.close()
+            log.info("Exit status: %s" % self.cur_status)
             return True
 
     def do_list(self,line):
         """ List all stages """
-        for i in range(len(self.stages)):
-            stage = self.stages[self.stage_nums[i]]
-            log.info("Stage %i: %s" % (i, stage.name))
+        for index, stage_name in enumerate(self.stage_nums):
+            if index == self.cur_stage:
+                comment = " (current stage)"
+            elif index == self.next_stage:
+                comment = " (next stage)"
+            else:
+                comment = ""
+            log.info("Stage %i: %s%s" % (index, stage_name, comment))
 
     def write_stage(self):
         if self.cur_stage is not None:
-            with open('deploy_process','w') as f:
+            with open('deploy_process.ini','w') as f:
                 conf = ConfigParser()
                 conf.add_section('position')
                 conf.set('position', 'current', self.cur_stage)
                 conf.write(f)
-        elif os.path.exists('deploy_process'):
-            os.unlink('deploy_process')
+        elif os.path.exists('deploy_process.ini'):
+            os.unlink('deploy_process.ini')
 
     def do_continue(self, line):
         """ Run while exit status is good """
@@ -105,7 +96,7 @@ class DeployCmd(cmd.Cmd):
             self.next_stage=self.next_stage+1
             self.write_stage()
 
-    def do_retry(self, line):
+    def do_tryagain(self, line):
         """ Apply current stage again """
         self.next_stage=self.cur_stage
         self.do_next(line)
