@@ -98,13 +98,13 @@ class DeployCmd(cmd.Cmd):
 
     def do_tryagain(self, line):
         """ Apply current stage again """
-        self.next_stage=self.cur_stage
-        self.do_next(line)
+        if self.cur_stage is not None:
+            self.next_stage=self.cur_stage
+            self.do_next(line)
 
     def do_rollback(self, line):
         """ Apply last stage rollback """
         if self.cur_stage is not None:
-            print self.cur_stage
             self.next_stage=self.cur_stage
             self.apply_stage('rollback')
             if self.cur_stage > 0:
@@ -123,7 +123,7 @@ class DeployCmd(cmd.Cmd):
             print('No such stage')
 
     def completenames(self, text, *ignored):
-        names = ['continue','next','rollback','retry','list','exit','goto','help']
+        names = ['continue','next','rollback','tryagain','list','exit','goto','help']
         return [a for a in names if a.startswith(text)]
 
     def do_EOF(self, line):
