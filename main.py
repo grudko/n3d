@@ -1,17 +1,35 @@
 #!/usr/bin/env python
-import os, sys, cmd
-from ConfigParser import ConfigParser
-from optparse import OptionParser
-from shell_command import ShellCommand 
+import os, sys, inspect, cmd
 import logging
 import threading
+import time
+from ConfigParser import ConfigParser
+from optparse import OptionParser
 from datetime import datetime
 
-logging.basicConfig(filename='deploy_process.log', format='%(asctime)s %(message)s', level = logging.DEBUG)
+cmd_args = sys.argv
+cmd_file = inspect.getfile( inspect.currentframe() )
+cmd_dir = os.path.realpath( os.path.abspath(
+                  os.path.split(cmd_file)[0] ))
+
+lib_dir = os.path.join(cmd_dir, 'lib')
+if lib_dir not in sys.path:
+    sys.path.insert(0, lib_dir)
+
+from shell_command import ShellCommand 
+
+logging.basicConfig(filename='deploy_process.log',
+                    format='%(asctime)s %(message)s',
+                    level = logging.DEBUG)
 log = logging.getLogger(__name__)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 log.addHandler(ch)
+
+orig_cwd = os.getcwd()
+os.chdir(cmd_dir)
+def restore_cwd():
+    os.chdir(orig_cwd)
 
 class DeployCmd(cmd.Cmd):
 
@@ -46,14 +64,20 @@ class DeployCmd(cmd.Cmd):
         self.stage_nums = sorted(self.stages.keys())
         if os.path.exists('deploy_process.ini'):
             conf = ConfigParser()
-	    conf.read('deploy_process.ini')
-            self.cur_stage = int(conf.get('position','current'))
-            self.next_stage = self.cur_stage+1
-            if self.cur_stage < 0:
-                self.cur_stage = None
+            try:
+                conf.read('deploy_process.ini')
+                cur_stage_name = conf.get('position','current')
+                if cur_stage_name in self.stage_nums:
+                    self.cur_stage = self.stage_nums.index(cur_stage_name)
+                    self.next_stage = self.cur_stage+1
+            except:
+                log.warning('Broken deploy_process.ini file')
         self.update_prompt()
         if self.options.run:
             self.cmdqueue.append('continue')
+
+    def postloop(self):
+        restore_cwd()
 
     def apply_stage(self, action):
         if self.next_stage == len(self.stages):
@@ -62,11 +86,16 @@ class DeployCmd(cmd.Cmd):
             return False
         else:
             stage = self.stages[self.stage_nums[self.next_stage]]
+            if not stage.get(action):
+                log.error('Stage %s has no %s action' % (self.stage_nums[self.next_stage], action))
+                return True
             time_init = datetime.now()
             logWrap = LogWrapper(log, logging.INFO)
+            env_fifo = EnvFIFO()
             self.cur_status = \
       ShellCommand(stage[action], stdout=logWrap, stderr=logWrap).shell_call()
             logWrap.close()
+            env_fifo.close()
             time_done = datetime.now()
             run_time = (time_done - time_init)
             log.info("Exit status: %s, run time: %s" % \
@@ -89,18 +118,34 @@ class DeployCmd(cmd.Cmd):
             with open('deploy_process.ini','w') as f:
                 conf = ConfigParser()
                 conf.add_section('position')
-                conf.set('position', 'current', self.cur_stage)
+                conf.set('position', 'current', self.stage_nums[self.cur_stage])
                 conf.write(f)
         elif os.path.exists('deploy_process.ini'):
             os.unlink('deploy_process.ini')
 
+    def reload_deploy(self):
+        global cmd_file
+        global cmd_args
+        if os.environ.get('RELOAD_DEPLOY'):
+            del os.environ['RELOAD_DEPLOY']
+            log.info('Restarting...')
+            run_args = ['python', cmd_file]
+            run_args.extend(cmd_args[1:])
+            run_string = ' '.join(run_args)
+            logging.shutdown()
+            restore_cwd()
+            os.execlp('bash', 'bash', '-c', run_string)
+
     def do_continue(self, line):
         """ Run while exit status is good """
+        global cmd_args
+        if '-r' not in cmd_args:
+            cmd_args.append('-r')
         self.cur_status = 0
         while self.cur_status == 0:
             self.do_next(line)
         self.update_prompt()
-        if self.next_stage == len(self.stages) and self.options.run:
+        if self.next_stage == len(self.stages):
             if os.path.exists('deploy_process.ini'):
                 os.unlink('deploy_process.ini')
             return True
@@ -111,6 +156,7 @@ class DeployCmd(cmd.Cmd):
             self.cur_stage=self.next_stage
             self.next_stage=self.next_stage+1
             self.write_stage()
+            self.reload_deploy()
 
     def do_tryagain(self, line):
         """ Apply current stage again """
@@ -128,6 +174,7 @@ class DeployCmd(cmd.Cmd):
             else:
                 self.cur_stage = None
             self.write_stage()
+            self.reload_deploy()
 
     def do_goto(self, line):
         """ Go to specified stage """
@@ -142,18 +189,22 @@ class DeployCmd(cmd.Cmd):
         names = ['continue','next','rollback','tryagain','list','exit','goto','help']
         return [a for a in names if a.startswith(text)]
 
+    def emptyline(self):    
+        """Do nothing on empty input line"""
+        pass
+
     def do_EOF(self, line):
         print('^D')
         return True
 
     def do_exit(self, line):
         return True
- 
+
     def precmd(self,line):
         if line != '':
             log.info("The command is: %s", line)
         return cmd.Cmd.precmd(self, line)
- 
+
     def postcmd(self,stop,line):
         self.update_prompt()
         return cmd.Cmd.postcmd(self, stop, line)
@@ -190,6 +241,43 @@ class LogWrapper(threading.Thread):
         """
         os.close(self.fdWrite)
 
+class EnvFIFO(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
+        if os.path.exists('/tmp/deploy.cmd'):
+            os.unlink('/tmp/deploy.cmd')
+        os.mkfifo('/tmp/deploy.cmd')
+        fifo_fd = os.open('/tmp/deploy.cmd', os.O_RDONLY|os.O_NONBLOCK)
+        self.fifo = os.fdopen(fifo_fd)
+        self.done = False
+        self.start()
+
+    def read_fifo(self):
+        try:
+            for line in iter(self.fifo.readline, ''):
+                env_s = [s.strip() for s in line.split('=', 1)]
+                k, v = env_s[0], '1'
+                if len(env_s) > 1:
+                    v =  env_s[1]
+                if env_s[0] in ('RELOAD_DEPLOY','BASH_ENV'):
+                    os.environ[k] = v
+        except IOError,e:
+            if exc.errno!=errno.EAGAIN:
+                raise e
+
+    def run(self):
+        while not self.done:
+            self.read_fifo()
+            time.sleep(0.5)
+
+    def close(self):
+        self.done=True
+        self.read_fifo()
+        self.fifo.close()
+        os.unlink('/tmp/deploy.cmd')
+
+
 if __name__ == '__main__':
     optionparser = OptionParser(usage="usage: %prog [options]")
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
@@ -201,4 +289,3 @@ if __name__ == '__main__':
                             exit after all done stages")
     (options, args) = optionparser.parse_args()
     DeployCmd().cmdloop(options=options)
-
