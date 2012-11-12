@@ -6,6 +6,10 @@ import cmd
 import logging
 import threading
 import time
+import struct
+import fcntl
+import termios
+import signal
 from ConfigParser import ConfigParser
 from optparse import OptionParser
 from datetime import datetime
@@ -39,25 +43,14 @@ log.addHandler(ch)
 
 class DeployCmd(cmd.Cmd):
 
-    stages = dict()
-    stage_nums = []
-    stages_done = dict()
-    next_stage = 0
-    cur_stage = None
-    cur_status = None
-
-    def update_prompt(self):
-        if self.next_stage < len(self.stages):
-            nxt = self.next_stage
-        else:
-            nxt = "None"
-        self.prompt = "stage | cur: %s | next: %s > " % (self.cur_stage, nxt)
-
-    def cmdloop(self, intro=None, options=None):
-        self.options = options
-        return cmd.Cmd.cmdloop(self, intro)
-
     def preloop(self):
+        self.stages = dict()
+        self.stage_nums = list()
+        self.stages_done = dict()
+        self.next_stage = 0
+        self.cur_stage = None
+        self.cur_status = None
+
         for root, dirs, files in os.walk(self.options.stages_dir):
             for stage_f_name in files:
                 stage_name, stage_f_ext = os.path.splitext(stage_f_name)
@@ -82,8 +75,25 @@ class DeployCmd(cmd.Cmd):
         if self.options.run:
             self.cmdqueue.append('continue')
 
+    def update_prompt(self):
+        if self.next_stage < len(self.stages):
+            nxt = self.next_stage
+        else:
+            nxt = "None"
+        self.prompt = "stage | cur: %s | next: %s > " % (self.cur_stage, nxt)
+
+    def cmdloop(self, intro=None, options=None):
+        self.options = options
+        return cmd.Cmd.cmdloop(self, intro)
+
     def postloop(self):
         restore_cwd()
+
+    def sigwinch_passthrough(self, sig, data):
+        s = struct.pack("HHHH", 0, 0, 0, 0)
+        a = struct.unpack('hhhh', fcntl.ioctl(sys.stdout.fileno(),
+                          termios.TIOCGWINSZ, s))
+        self.p.setwinsize(a[0], a[1])
 
     def apply_stage(self, action):
         if self.next_stage == len(self.stages):
@@ -100,17 +110,15 @@ class DeployCmd(cmd.Cmd):
             logWrap = LogWrapper()
             env_fifo = EnvFIFO()
             try:
-                p = pexpect.spawn(stage[action], logfile=logWrap)
-                while p.isalive():
-                    i = p.expect(['.*\n', pexpect.EOF], timeout=86400)
-                    if i == 1:
-                        break
-                p.close()
-            except KeyboardInterrupt:
-                log.info("\nKeyboard Interrupt")
-                print
-            self.cur_status = p.exitstatus
-            logWrap.close()
+                self.p = pexpect.spawn(stage[action], logfile=logWrap,
+                                       timeout=86400)
+                signal.signal(signal.SIGWINCH, self.sigwinch_passthrough)
+                self.p.interact()
+                self.p.close()
+            except OSError as e:
+                if e.errno != errno.EIO:
+                    raise e
+            self.cur_status = self.p.exitstatus
             env_fifo.close()
             time_done = datetime.now()
             run_time = (time_done - time_init)
@@ -160,14 +168,14 @@ class DeployCmd(cmd.Cmd):
             cmd_args.append('-r')
         self.cur_status = 0
         while self.cur_status == 0:
-            self.do_next(line)
+            self.do_do(line)
         self.update_prompt()
         if self.next_stage == len(self.stages):
             if os.path.exists('deploy_process.ini'):
                 os.unlink('deploy_process.ini')
             return True
 
-    def do_next(self, line):
+    def do_do(self, line):
         """ Apply next stage """
         if self.apply_stage('update'):
             self.cur_stage = self.next_stage
@@ -175,14 +183,14 @@ class DeployCmd(cmd.Cmd):
             self.write_stage()
             self.reload_deploy()
 
-    def do_tryagain(self, line):
+    def do_retry(self, line):
         """ Apply current stage again """
         if self.cur_stage is not None:
             self.next_stage = self.cur_stage
-            self.do_next(line)
+            self.do_do(line)
 
-    def do_rollback(self, line):
-        """ Apply last stage rollback """
+    def do_undo(self, line):
+        """ Apply current stage rollback """
         if self.cur_stage is not None:
             self.next_stage = self.cur_stage
             self.apply_stage('rollback')
@@ -195,15 +203,26 @@ class DeployCmd(cmd.Cmd):
 
     def do_goto(self, line):
         """ Go to specified stage """
+        if not line.isdigit():
+            log.info("Usage: goto number_of_stage")
+            return
         stage_num = int(line)
         if stage_num in range(0, len(self.stages)):
             self.next_stage = stage_num
-            self.do_next('')
+            self.do_do('')
         else:
             log.error('No such stage')
 
+    def do_EOF(self, line):
+        """Exit program"""
+        return True
+
+    def do_exit(self, line):
+        """Exit program"""
+        return True
+
     def completenames(self, text, *ignored):
-        names = ['continue', 'next', 'rollback', 'tryagain', 'list', 'exit',
+        names = ['continue', 'do', 'undo', 'retry', 'list', 'exit',
                  'goto', 'help']
         return [a for a in names if a.startswith(text)]
 
@@ -211,16 +230,12 @@ class DeployCmd(cmd.Cmd):
         """Do nothing on empty input line"""
         pass
 
-    def do_EOF(self, line):
-        print('^D')
-        return True
-
-    def do_exit(self, line):
-        return True
-
     def precmd(self, line):
         if line != '':
-            log.info("The command is: %s", line)
+            if line == 'EOF':
+                log.info('exit')
+            else:
+                log.info(line)
         return cmd.Cmd.precmd(self, line)
 
     def postcmd(self, stop, line):
@@ -228,33 +243,14 @@ class DeployCmd(cmd.Cmd):
         return cmd.Cmd.postcmd(self, stop, line)
 
 
-class LogWrapper(threading.Thread):
+class LogWrapper():
 
     def __init__(self):
-        """Setup the object with a logger and a loglevel
-        and start the thread
+        """Setup the file-like object with a logger and a loglevel
         """
-        threading.Thread.__init__(self)
-        self.daemon = True
         self.logger = logging.getLogger('LogWrapper')
         self.level = logging.DEBUG
         self.partline = ''
-        self.fdRead, self.fdWrite = os.pipe()
-        self.pipeReader = os.fdopen(self.fdRead, 'r', 0)
-        self.start()
-
-    def fileno(self):
-        """Return the write file descriptor of the pipe
-        """
-        return self.fdWrite
-
-    def run(self):
-        """Run the thread, logging everything.
-        """
-        for line in iter(self.pipeReader.readline, ''):
-            self.logger.log(self.level, line.strip('\n'))
-            print line,
-        self.pipeReader.close()
 
     def write(self, lines):
         for line in lines.splitlines(True):
@@ -262,15 +258,9 @@ class LogWrapper(threading.Thread):
             if self.partline[-1] in ('\r', '\n'):
                 self.logger.log(self.level, self.partline.strip())
                 self.partline = ''
-        print lines,
 
     def flush(self):
         pass
-
-    def close(self):
-        """Close the write end of the pipe.
-        """
-        os.close(self.fdWrite)
 
 
 class EnvFIFO(threading.Thread):
@@ -295,8 +285,8 @@ class EnvFIFO(threading.Thread):
                     v = env_s[1]
                 if env_s[0] in ('RELOAD_DEPLOY', 'BASH_ENV'):
                     os.environ[k] = v
-        except IOError, e:
-            if e != errno.EAGAIN:
+        except IOError as e:
+            if e.errno != errno.EAGAIN:
                 raise e
 
     def run(self):
@@ -321,4 +311,7 @@ if __name__ == '__main__':
                             help="run all stages while stage exit status is 0,\
                             exit after all done stages")
     (options, args) = optionparser.parse_args()
-    DeployCmd().cmdloop(options=options)
+    try:
+        DeployCmd().cmdloop(options=options)
+    except KeyboardInterrupt:
+        log.info("exit")
