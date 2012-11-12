@@ -4,13 +4,14 @@ from distutils.core import setup
 setup(
     name='n3d',
     version='0.1',
+    
     description='N3 Deployment Tool',
     author='Anton Grudko',
     author_email='grudko@gmail.com',
     url='http://develop.netrika.ru/n3d',
     platforms=('Any',),
-    packages=['n3d'],
-    requires=['pexpect'],
+    py_modules=['n3d'],
+    install_requires=['pexpect'],
     entry_points={
         'console_scripts': [
             'n3d = n3d:main',
