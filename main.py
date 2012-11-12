@@ -28,7 +28,6 @@ import pexpect
 orig_cwd = os.getcwd()
 os.chdir(cmd_dir)
 
-
 def restore_cwd():
     os.chdir(orig_cwd)
 
@@ -114,10 +113,10 @@ class DeployCmd(cmd.Cmd):
                                        timeout=86400)
                 signal.signal(signal.SIGWINCH, self.sigwinch_passthrough)
                 self.p.interact()
-                self.p.close()
             except OSError as e:
                 if e.errno != errno.EIO:
                     raise e
+            self.p.close()
             self.cur_status = self.p.exitstatus
             env_fifo.close()
             time_done = datetime.now()
