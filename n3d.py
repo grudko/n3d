@@ -282,6 +282,9 @@ def main():
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
                             default=os.path.join("deploy","stages"),
                             help="stages root directory [ default: %default ]")
+    optionparser.add_option("-w", "--work-dir", dest="work_dir",
+                            default="deploy",
+                            help="working directory [ default: %default ]")
     optionparser.add_option("-l", "--log-file", dest="log_file",
                             default="./deploy_process.log",
                             help="log file [ default: %default ]")
@@ -297,7 +300,10 @@ def main():
     if not os.path.exists(options.stages_dir):
         print "Stages directory not found: %s" % options.stages_dir
         sys.exit(1)
-
+    if not os.path.exists(options.work_dir):
+        print "Working directory not found: %s" % options.work_dir
+        sys.exit(1)
+    os.chdir(options.work_dir)
     logging.basicConfig(filename=options.log_file,
                         format='%(asctime)s %(message)s',
                         level=logging.DEBUG)
