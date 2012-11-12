@@ -10,6 +10,7 @@ import struct
 import fcntl
 import termios
 import signal
+import pexpect
 from ConfigParser import ConfigParser
 from optparse import OptionParser
 from datetime import datetime
@@ -17,27 +18,7 @@ import errno
 
 cmd_args = sys.argv
 cmd_file = inspect.getfile(inspect.currentframe())
-cmd_dir = os.path.realpath(os.path.abspath(os.path.split(cmd_file)[0]))
-
-lib_dir = os.path.join(cmd_dir, 'lib')
-if lib_dir not in sys.path:
-    sys.path.insert(0, lib_dir)
-
-import pexpect
-
-orig_cwd = os.getcwd()
-os.chdir(cmd_dir)
-
-def restore_cwd():
-    os.chdir(orig_cwd)
-
-logging.basicConfig(filename='deploy_process.log',
-                    format='%(asctime)s %(message)s',
-                    level=logging.DEBUG)
 log = logging.getLogger(__name__)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-log.addHandler(ch)
 
 
 class DeployCmd(cmd.Cmd):
@@ -60,10 +41,10 @@ class DeployCmd(cmd.Cmd):
                     self.stages[stage_name][stage_action] = os.path.join(
                         root, stage_f_name)
         self.stage_nums = sorted(self.stages.keys())
-        if os.path.exists('deploy_process.ini'):
+        if os.path.exists(self.options.process_file):
             conf = ConfigParser()
             try:
-                conf.read('deploy_process.ini')
+                conf.read(self.options.process_file)
                 cur_stage_name = conf.get('position', 'current')
                 if cur_stage_name in self.stage_nums:
                     self.cur_stage = self.stage_nums.index(cur_stage_name)
@@ -84,9 +65,6 @@ class DeployCmd(cmd.Cmd):
     def cmdloop(self, intro=None, options=None):
         self.options = options
         return cmd.Cmd.cmdloop(self, intro)
-
-    def postloop(self):
-        restore_cwd()
 
     def sigwinch_passthrough(self, sig, data):
         s = struct.pack("HHHH", 0, 0, 0, 0)
@@ -138,14 +116,14 @@ class DeployCmd(cmd.Cmd):
 
     def write_stage(self):
         if self.cur_stage is not None:
-            with open('deploy_process.ini', 'w') as f:
+            with open(self.options.process_file, 'w') as f:
                 conf = ConfigParser()
                 conf.add_section('position')
                 conf.set('position', 'current',
                          self.stage_nums[self.cur_stage])
                 conf.write(f)
-        elif os.path.exists('deploy_process.ini'):
-            os.unlink('deploy_process.ini')
+        elif os.path.exists(self.options.process_file):
+            os.unlink(self.options.process_file)
 
     def reload_deploy(self):
         global cmd_file
@@ -157,7 +135,6 @@ class DeployCmd(cmd.Cmd):
             run_args.extend(cmd_args[1:])
             run_string = ' '.join(run_args)
             logging.shutdown()
-            restore_cwd()
             os.execlp('bash', 'bash', '-c', run_string)
 
     def do_continue(self, line):
@@ -170,8 +147,8 @@ class DeployCmd(cmd.Cmd):
             self.do_do(line)
         self.update_prompt()
         if self.next_stage == len(self.stages):
-            if os.path.exists('deploy_process.ini'):
-                os.unlink('deploy_process.ini')
+            if os.path.exists(self.options.process_file):
+                os.unlink(self.options.process_file)
             return True
 
     def do_do(self, line):
@@ -300,17 +277,39 @@ class EnvFIFO(threading.Thread):
         os.unlink('/tmp/deploy.cmd')
 
 
-if __name__ == '__main__':
+def main():
     optionparser = OptionParser(usage="usage: %prog [options]")
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
                             default="./stages",
                             help="stages root directory [ default: %default ]")
+    optionparser.add_option("-l", "--log-file", dest="log_file",
+                            default="./deploy_process.log",
+                            help="log file [ default: %default ]")
+    optionparser.add_option("-p", "--process-file", dest="process_file",
+                            default="./deploy_process.ini",
+                            help="The file containing the current stage of the\
+                            deployment process [ default: %default ]")
     optionparser.add_option("-r", "--run", action="store_true", dest="run",
                             default=False,
                             help="run all stages while stage exit status is 0,\
                             exit after all done stages")
     (options, args) = optionparser.parse_args()
+    if not os.path.exists(options.stages_dir):
+        print "Stages directory not found: %s" % options.stages_dir
+        sys.exit(1)
+
+    logging.basicConfig(filename=options.log_file,
+                        format='%(asctime)s %(message)s',
+                        level=logging.DEBUG)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    log.addHandler(ch)
+
     try:
         DeployCmd().cmdloop(options=options)
     except KeyboardInterrupt:
         log.info("exit")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
