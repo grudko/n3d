@@ -286,8 +286,8 @@ def main():
                             default=os.path.join("deploy", "stages"),
                             help="stages root directory [ default: %default ]")
     optionparser.add_option("-w", "--work-dir", dest="work_dir",
-                            default="deploy",
-                            help="working directory [ default: %default ]")
+                            default=os.getcwd(),
+                            help="working directory [ current: %default ]")
     optionparser.add_option("-l", "--log-file", dest="log_file",
                             default=os.path.join("deploy", "deploy_process.log"),
                             help="log file [ default: %default ]")
