@@ -280,7 +280,7 @@ class EnvFIFO(threading.Thread):
 def main():
     optionparser = OptionParser(usage="usage: %prog [options]")
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
-                            default="./stages",
+                            default=os.path.join("deploy","stages"),
                             help="stages root directory [ default: %default ]")
     optionparser.add_option("-l", "--log-file", dest="log_file",
                             default="./deploy_process.log",
