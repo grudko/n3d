@@ -83,6 +83,8 @@ class DeployCmd(cmd.Cmd):
                 log.error('Stage %s has no %s action' % (
                     self.stage_nums[self.next_stage], action))
                 return True
+            oldcwd = os.getcwd()
+            os.chdir(self.options.work_dir)
             time_init = datetime.now()
             logWrap = LogWrapper()
             env_fifo = EnvFIFO()
@@ -97,6 +99,7 @@ class DeployCmd(cmd.Cmd):
             self.p.close()
             self.cur_status = self.p.exitstatus
             env_fifo.close()
+            os.chdir(oldcwd)
             time_done = datetime.now()
             run_time = (time_done - time_init)
             log.info("Exit status: %s, run time: %s" % (self.cur_status,
@@ -280,16 +283,16 @@ class EnvFIFO(threading.Thread):
 def main():
     optionparser = OptionParser(usage="usage: %prog [options]")
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
-                            default=os.path.join("deploy","stages"),
+                            default=os.path.join("deploy", "stages"),
                             help="stages root directory [ default: %default ]")
     optionparser.add_option("-w", "--work-dir", dest="work_dir",
                             default="deploy",
                             help="working directory [ default: %default ]")
     optionparser.add_option("-l", "--log-file", dest="log_file",
-                            default="./deploy_process.log",
+                            default=os.path.join("deploy", "deploy_process.log"),
                             help="log file [ default: %default ]")
     optionparser.add_option("-p", "--process-file", dest="process_file",
-                            default="./deploy_process.ini",
+                            default=os.path.join("deploy", "deploy_process.ini"),
                             help="The file containing the current stage of the\
                             deployment process [ default: %default ]")
     optionparser.add_option("-r", "--run", action="store_true", dest="run",
@@ -303,7 +306,6 @@ def main():
     if not os.path.exists(options.work_dir):
         print "Working directory not found: %s" % options.work_dir
         sys.exit(1)
-    os.chdir(options.work_dir)
     logging.basicConfig(filename=options.log_file,
                         format='%(asctime)s %(message)s',
                         level=logging.DEBUG)
