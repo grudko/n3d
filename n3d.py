@@ -234,12 +234,22 @@ class LogWrapper():
     def write(self, lines):
         for line in lines.splitlines(True):
             self.partline += line
-            if self.partline[-1] in ('\r', '\n'):
+            if self.partline[-1] == '\n':
                 self.logger.log(self.level, self.partline.strip())
+            if self.partline[-1] in ('\r', '\n'):
                 self.partline = ''
 
     def flush(self):
         pass
+
+
+def set_env(line):
+    env_s = [s.strip() for s in line.split('=', 1)]
+    k, v = env_s[0], '1'
+    if len(env_s) > 1:
+        v = env_s[1]
+    log.info("New ENV variable: %s=%s" % (k, v))
+    os.environ[k] = v
 
 
 class EnvFIFO(threading.Thread):
@@ -258,12 +268,7 @@ class EnvFIFO(threading.Thread):
     def read_fifo(self):
         try:
             for line in iter(self.fifo.readline, ''):
-                env_s = [s.strip() for s in line.split('=', 1)]
-                k, v = env_s[0], '1'
-                if len(env_s) > 1:
-                    v = env_s[1]
-                if env_s[0] in ('RELOAD_DEPLOY', 'BASH_ENV'):
-                    os.environ[k] = v
+                set_env(line)
         except IOError as e:
             if e.errno != errno.EAGAIN:
                 raise e
@@ -295,6 +300,8 @@ def main():
                             default=os.path.join("deploy", "deploy_process.ini"),
                             help="The file containing the current stage of the\
                             deployment process [ default: %default ]")
+    optionparser.add_option("-E", "--env", action="append", dest="envs",
+                            help="Add environment variable for stages")
     optionparser.add_option("-r", "--run", action="store_true", dest="run",
                             default=False,
                             help="run all stages while stage exit status is 0,\
@@ -312,7 +319,9 @@ def main():
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
     log.addHandler(ch)
-
+    if options.envs:
+        for line in options.envs:
+            set_env(line)
     try:
         DeployCmd().cmdloop(options=options)
     except KeyboardInterrupt:
