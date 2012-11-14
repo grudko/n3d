@@ -11,7 +11,7 @@ import fcntl
 import termios
 import signal
 import pexpect
-from termcolor import colored, cprint
+from termcolor import colored
 from ConfigParser import ConfigParser
 from optparse import OptionParser
 from datetime import datetime
@@ -66,8 +66,8 @@ class DeployCmd(cmd.Cmd):
         stage_name = self.stage_name(stage)
         if stage_name is not None:
             return "%s %s" % (
-                colored(stage,'green'),
-                colored(stage_name,'white'))
+                colored(stage, 'green'),
+                colored(stage_name, 'white'))
 
     def update_prompt(self):
         self.prompt = "stage | cur: %s | next: %s > " % (
@@ -91,7 +91,7 @@ class DeployCmd(cmd.Cmd):
         else:
             result = line
         if line[-1] not in ('\r', '\n'):
-            result+= '\r\n'
+            result += '\r\n'
         return result
 
     def apply_stage(self, action):
@@ -324,9 +324,10 @@ class ColoredFormatter(logging.Formatter):
     }
 
     def format(self, record):
-         result = logging.Formatter.format(self, record)
-         if result is not None:
-             return colored(result, self.colors[record.levelname])
+        result = logging.Formatter.format(self, record)
+        if result is not None:
+            return colored(result, self.colors[record.levelname])
+
 
 def main():
     optionparser = OptionParser(usage="usage: %prog [options]")
@@ -337,10 +338,12 @@ def main():
                             default=os.getcwd(),
                             help="working directory [ current: %default ]")
     optionparser.add_option("-l", "--log-file", dest="log_file",
-                            default=os.path.join("deploy", "deploy_process.log"),
+                            default=os.path.join("deploy",
+                                                 "deploy_process.log"),
                             help="log file [ default: %default ]")
     optionparser.add_option("-p", "--process-file", dest="process_file",
-                            default=os.path.join("deploy", "deploy_process.ini"),
+                            default=os.path.join("deploy",
+                                                 "deploy_process.ini"),
                             help="The file containing the current stage of the\
                             deployment process [ default: %default ]")
     optionparser.add_option("-E", "--env", action="append", dest="envs",

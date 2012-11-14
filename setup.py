@@ -4,14 +4,13 @@ from distutils.core import setup
 setup(
     name='n3d',
     version='0.1',
-    
     description='N3 Deployment Tool',
     author='Anton Grudko',
     author_email='grudko@gmail.com',
     url='http://develop.netrika.ru/n3d',
     platforms=('Any',),
     py_modules=['n3d'],
-    install_requires=['pexpect', 'jinja2'],
+    install_requires=['pexpect', 'jinja2', 'termcolor'],
     entry_points={
         'console_scripts': [
             'n3d = n3d:main',
