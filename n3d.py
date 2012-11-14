@@ -58,7 +58,7 @@ class DeployCmd(cmd.Cmd):
 
     def stage_name(self, stage):
         if stage is not None and stage >= 0 and stage < len(self.stages):
-            return self.stage_nums[stage].split('-')[-1]
+            return self.stage_nums[stage].split('-', 1)[-1]
         else:
             return None
 
