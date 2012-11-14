@@ -90,7 +90,7 @@ class DeployCmd(cmd.Cmd):
             result = stage_name + ' : ' + line
         else:
             result = line
-        if line[-1] != '\n':
+        if line[-1] not in ('\r', '\n'):
             result+= '\r\n'
         return result
 
@@ -124,8 +124,10 @@ class DeployCmd(cmd.Cmd):
             os.chdir(oldcwd)
             time_done = datetime.now()
             run_time = (time_done - time_init)
-            exit_log = "Exit status: %s, run time: %s" % (self.cur_status,
-                                                          run_time)
+            exit_log = "%s exit status: %s, run time: %s" % (
+                       self.stage_name(stage),
+                       self.cur_status,
+                       run_time)
             if int(self.cur_status) == 0:
                 log.info(exit_log)
             else:
