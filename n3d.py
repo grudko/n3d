@@ -103,7 +103,7 @@ class DeployCmd(cmd.Cmd):
             stage = self.stages[self.stage_nums[self.next_stage]]
             if not stage.get(action):
                 log.error('Stage %s has no %s action' % (
-                    self.stage_nums[self.next_stage], action))
+                    self.stage_name(self.next_stage), action))
                 return True
             oldcwd = os.getcwd()
             os.chdir(self.options.work_dir)
@@ -125,7 +125,7 @@ class DeployCmd(cmd.Cmd):
             time_done = datetime.now()
             run_time = (time_done - time_init)
             exit_log = "%s exit status: %s, run time: %s" % (
-                       self.stage_name(stage),
+                       self.stage_name(self.next_stage),
                        self.cur_status,
                        run_time)
             if int(self.cur_status) == 0:
