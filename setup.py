@@ -11,7 +11,7 @@ setup(
     url='http://develop.netrika.ru/n3d',
     platforms=('Any',),
     py_modules=['n3d'],
-    install_requires=['pexpect'],
+    install_requires=['pexpect', 'jinja2'],
     entry_points={
         'console_scripts': [
             'n3d = n3d:main',

@@ -11,6 +11,7 @@ import fcntl
 import termios
 import signal
 import pexpect
+from termcolor import colored, cprint
 from ConfigParser import ConfigParser
 from optparse import OptionParser
 from datetime import datetime
@@ -55,12 +56,23 @@ class DeployCmd(cmd.Cmd):
         if self.options.run:
             self.cmdqueue.append('continue')
 
-    def update_prompt(self):
-        if self.next_stage < len(self.stages):
-            nxt = self.next_stage
+    def stage_name(self, stage):
+        if stage is not None and stage >= 0 and stage < len(self.stages):
+            return self.stage_nums[stage].split('-')[-1]
         else:
-            nxt = "None"
-        self.prompt = "stage | cur: %s | next: %s > " % (self.cur_stage, nxt)
+            return None
+
+    def stage_colored(self, stage):
+        stage_name = self.stage_name(stage)
+        if stage_name is not None:
+            return "%s %s" % (
+                colored(stage,'green'),
+                colored(stage_name,'white'))
+
+    def update_prompt(self):
+        self.prompt = "stage | cur: %s | next: %s > " % (
+                      self.stage_colored(self.cur_stage),
+                      self.stage_colored(self.next_stage))
 
     def cmdloop(self, intro=None, options=None):
         self.options = options
@@ -71,6 +83,16 @@ class DeployCmd(cmd.Cmd):
         a = struct.unpack('hhhh', fcntl.ioctl(sys.stdout.fileno(),
                           termios.TIOCGWINSZ, s))
         self.p.setwinsize(a[0], a[1])
+
+    def pexpect_filter(self, line):
+        stage_name = self.stage_name(self.next_stage)
+        if stage_name is not None:
+            result = stage_name + ' : ' + line
+        else:
+            result = line
+        if line[-1] != '\n':
+            result+= '\r\n'
+        return result
 
     def apply_stage(self, action):
         if self.next_stage == len(self.stages):
@@ -92,7 +114,7 @@ class DeployCmd(cmd.Cmd):
                 self.p = pexpect.spawn(stage[action], logfile=logWrap,
                                        timeout=86400)
                 signal.signal(signal.SIGWINCH, self.sigwinch_passthrough)
-                self.p.interact()
+                self.p.interact(output_filter=self.pexpect_filter)
             except OSError as e:
                 if e.errno != errno.EIO:
                     raise e
@@ -102,8 +124,12 @@ class DeployCmd(cmd.Cmd):
             os.chdir(oldcwd)
             time_done = datetime.now()
             run_time = (time_done - time_init)
-            log.info("Exit status: %s, run time: %s" % (self.cur_status,
-                                                        run_time))
+            exit_log = "Exit status: %s, run time: %s" % (self.cur_status,
+                                                          run_time)
+            if int(self.cur_status) == 0:
+                log.info(exit_log)
+            else:
+                log.error(exit_log)
             return True
 
     def do_list(self, line):
@@ -133,7 +159,7 @@ class DeployCmd(cmd.Cmd):
         global cmd_args
         if os.environ.get('RELOAD_DEPLOY'):
             del os.environ['RELOAD_DEPLOY']
-            log.info('Restarting...')
+            log.warning('Restarting...')
             run_args = ['python', cmd_file]
             run_args.extend(cmd_args[1:])
             run_string = ' '.join(run_args)
@@ -285,6 +311,21 @@ class EnvFIFO(threading.Thread):
         os.unlink('/tmp/deploy.cmd')
 
 
+class ColoredFormatter(logging.Formatter):
+
+    colors = {
+        'WARNING': 'yellow',
+        'INFO': 'white',
+        'DEBUG': 'blue',
+        'CRITICAL': 'yellow',
+        'ERROR': 'red'
+    }
+
+    def format(self, record):
+         result = logging.Formatter.format(self, record)
+         if result is not None:
+             return colored(result, self.colors[record.levelname])
+
 def main():
     optionparser = OptionParser(usage="usage: %prog [options]")
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
@@ -318,6 +359,7 @@ def main():
                         level=logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
+    ch.setFormatter(ColoredFormatter())
     log.addHandler(ch)
     if options.envs:
         for line in options.envs:
@@ -327,6 +369,7 @@ def main():
     except KeyboardInterrupt:
         log.info("exit")
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main()
