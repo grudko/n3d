@@ -184,7 +184,18 @@ class DeployCmd(cmd.Cmd):
             return True
 
     def do_do(self, line):
-        """ Apply next stage """
+        """ Apply next or specified stage. Usage: do [number_of_stage] """
+        if line != '':
+            if not line.isdigit():
+                log.info("Usage: do [number_of_stage]")
+                return False
+            stage_num = int(line)
+            if stage_num in range(0, len(self.stages)):
+                self.next_stage = stage_num
+            else:
+                log.error('No such stage')
+                return False
+
         if self.apply_stage('update'):
             self.cur_stage = self.next_stage
             self.next_stage = self.next_stage + 1
@@ -209,18 +220,6 @@ class DeployCmd(cmd.Cmd):
             self.write_stage()
             self.reload_deploy()
 
-    def do_goto(self, line):
-        """ Go to specified stage """
-        if not line.isdigit():
-            log.info("Usage: goto number_of_stage")
-            return
-        stage_num = int(line)
-        if stage_num in range(0, len(self.stages)):
-            self.next_stage = stage_num
-            self.do_do('')
-        else:
-            log.error('No such stage')
-
     def do_EOF(self, line):
         """Exit program"""
         return True
@@ -231,7 +230,7 @@ class DeployCmd(cmd.Cmd):
 
     def completenames(self, text, *ignored):
         names = ['continue', 'do', 'undo', 'retry', 'list', 'exit',
-                 'goto', 'help']
+                 'help']
         return [a for a in names if a.startswith(text)]
 
     def emptyline(self):
