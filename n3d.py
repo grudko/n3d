@@ -132,6 +132,7 @@ class DeployCmd(cmd.Cmd):
                 log.info(exit_log)
             else:
                 log.error(exit_log)
+            log.info('\n\n\n')
             return True
 
     def do_list(self, line):
@@ -317,7 +318,7 @@ class ColoredFormatter(logging.Formatter):
 
     colors = {
         'WARNING': 'yellow',
-        'INFO': 'white',
+        'INFO': 'green',
         'DEBUG': 'blue',
         'CRITICAL': 'yellow',
         'ERROR': 'red'
