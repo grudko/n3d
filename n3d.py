@@ -285,10 +285,11 @@ class EnvFIFO(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         self.daemon = True
-        if os.path.exists('/tmp/deploy.cmd'):
-            os.unlink('/tmp/deploy.cmd')
-        os.mkfifo('/tmp/deploy.cmd')
-        fifo_fd = os.open('/tmp/deploy.cmd', os.O_RDONLY | os.O_NONBLOCK)
+        self.fifo_name=os.path.join(os.environ.get('HOME'), 'deploy.cmd')
+        if os.path.exists(self.fifo_name):
+            os.unlink(self.fifo_name)
+        os.mkfifo(self.fifo_name)
+        fifo_fd = os.open(self.fifo_name, os.O_RDONLY | os.O_NONBLOCK)
         self.fifo = os.fdopen(fifo_fd, 'r', 0)
         self.done = False
         self.start()
@@ -310,7 +311,7 @@ class EnvFIFO(threading.Thread):
         self.done = True
         self.read_fifo()
         self.fifo.close()
-        os.unlink('/tmp/deploy.cmd')
+        os.unlink(self.fifo_name)
 
 
 class ColoredFormatter(logging.Formatter):
