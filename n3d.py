@@ -96,7 +96,7 @@ class DeployCmd(cmd.Cmd):
 
     def apply_stage(self, action):
         if self.next_stage == len(self.stages):
-            log.error("No next stages")
+            log.error("Finished all stages")
             self.cur_status = None
             return False
         else:
@@ -206,7 +206,7 @@ class DeployCmd(cmd.Cmd):
         """ Apply current stage again """
         if self.cur_stage is not None:
             self.next_stage = self.cur_stage
-            self.do_do(line)
+            self.do_do('')
 
     def do_undo(self, line):
         """ Apply current stage rollback """
