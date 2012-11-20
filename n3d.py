@@ -11,7 +11,7 @@ import fcntl
 import termios
 import signal
 import pexpect
-from termcolor import colored
+import termcolor
 from ConfigParser import ConfigParser
 from optparse import OptionParser
 from datetime import datetime
@@ -66,8 +66,8 @@ class DeployCmd(cmd.Cmd):
         stage_name = self.stage_name(stage)
         if stage_name is not None:
             return "%s %s" % (
-                colored(stage, 'green'),
-                colored(stage_name, 'white'))
+                readline_colored(stage, 'green'),
+                readline_colored(stage_name, 'white'))
 
     def update_prompt(self):
         self.prompt = "stage | cur: %s | next: %s > " % (
@@ -79,9 +79,13 @@ class DeployCmd(cmd.Cmd):
         return cmd.Cmd.cmdloop(self, intro)
 
     def sigwinch_passthrough(self, sig, data):
+        if 'TIOCGWINSZ' in dir(termios):
+            TIOCGWINSZ = termios.TIOCGWINSZ
+        else:
+            TIOCGWINSZ = 1074295912
         s = struct.pack("HHHH", 0, 0, 0, 0)
         a = struct.unpack('hhhh', fcntl.ioctl(sys.stdout.fileno(),
-                          termios.TIOCGWINSZ, s))
+                          TIOCGWINSZ, s))
         self.p.setwinsize(a[0], a[1])
 
     def pexpect_filter(self, line):
@@ -265,7 +269,9 @@ class LogWrapper():
             if self.partline[-1] == '\n':
                 self.logger.log(self.level, self.partline.strip())
             if self.partline[-1] in ('\r', '\n'):
+                self.lastline = self.partline
                 self.partline = ''
+        self.logger.log(self.level, self.lastline.strip())
 
     def flush(self):
         pass
@@ -285,7 +291,7 @@ class EnvFIFO(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         self.daemon = True
-        self.fifo_name=os.path.join(os.environ.get('HOME'), 'deploy.cmd')
+        self.fifo_name = os.path.join(os.environ.get('HOME'), 'deploy.cmd')
         if os.path.exists(self.fifo_name):
             os.unlink(self.fifo_name)
         os.mkfifo(self.fifo_name)
@@ -314,6 +320,23 @@ class EnvFIFO(threading.Thread):
         os.unlink(self.fifo_name)
 
 
+def readline_colored(text, color=None, on_color=None, attrs=None):
+    if os.getenv('ANSI_COLORS_DISABLED') is None:
+        fmt_str = '\001\033[%dm\002%s'
+        if color is not None:
+            text = fmt_str % (termcolor.COLORS[color], text)
+
+        if on_color is not None:
+            text = fmt_str % (termcolor.HIGHLIGHTS[on_color], text)
+
+        if attrs is not None:
+            for attr in attrs:
+                text = fmt_str % (termcolor.ATTRIBUTES[attr], text)
+
+        text += '\001\033[0m\002'
+    return text
+
+
 class ColoredFormatter(logging.Formatter):
 
     colors = {
@@ -327,7 +350,7 @@ class ColoredFormatter(logging.Formatter):
     def format(self, record):
         result = logging.Formatter.format(self, record)
         if result is not None:
-            return colored(result, self.colors[record.levelname])
+            return termcolor.colored(result, self.colors[record.levelname])
 
 
 def main():
