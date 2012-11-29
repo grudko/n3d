@@ -1,2 +1,3 @@
-N3 Deployment Tool
-
+Usage: create "./deploy/stages" directory in your project, and 
+fill it with executable files with ".update" and ".rollback" extensions, 
+that contains the stages of your deployment process. 
