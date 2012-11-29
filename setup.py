@@ -3,11 +3,11 @@ from distutils.core import setup
 
 setup(
     name='n3d',
-    version='0.2',
+    version='0.2.1',
     description='Utility for step-by-step application deployment',
     author='Anton Grudko',
     author_email='grudko@gmail.com',
-    url="http://pypi.python.org/pypi/n3d",
+    url="http://github.com/grudko/n3d",
     platforms=('Any',),
     py_modules=['n3d'],
     install_requires=['pexpect', 'termcolor'],
