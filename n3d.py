@@ -11,8 +11,9 @@ import fcntl
 import termios
 import signal
 import pexpect
+import pwd
 import termcolor
-from ConfigParser import ConfigParser
+from ConfigParser import ConfigParser, Error as ConfigParserError
 from optparse import OptionParser
 from datetime import datetime
 import errno
@@ -20,6 +21,9 @@ import errno
 cmd_args = sys.argv
 cmd_file = inspect.getfile(inspect.currentframe())
 log = logging.getLogger(__name__)
+
+tty_path = None
+tty_owner = None
 
 
 class DeployCmd(cmd.Cmd):
@@ -31,7 +35,8 @@ class DeployCmd(cmd.Cmd):
         self.next_stage = 0
         self.cur_stage = None
         self.cur_status = None
-
+        global tty_path
+        global tty_owner
         for root, dirs, files in os.walk(self.options.stages_dir):
             for stage_f_name in files:
                 stage_name, stage_f_ext = os.path.splitext(stage_f_name)
@@ -42,6 +47,7 @@ class DeployCmd(cmd.Cmd):
                     self.stages[stage_name][stage_action] = os.path.join(
                         root, stage_f_name)
         self.stage_nums = sorted(self.stages.keys())
+
         if os.path.exists(self.options.process_file):
             conf = ConfigParser()
             try:
@@ -50,7 +56,19 @@ class DeployCmd(cmd.Cmd):
                 if cur_stage_name in self.stage_nums:
                     self.cur_stage = self.stage_nums.index(cur_stage_name)
                     self.next_stage = self.cur_stage + 1
-            except:
+                prev_tty_path = conf.get('tty', 'path')
+                prev_tty_owner = conf.get('tty', 'owner')
+                if tty_owner != prev_tty_owner:
+                    log.error('n3d deploy process has already started by '
+                              'the user %s on terminal %s'
+                              % (prev_tty_owner, prev_tty_path))
+                    log.error('If you still want to continue as this user,'
+                              'change the TTY OWNER in: %s, by example:\n'
+                              'sed -i "s/%s/%s/" %s'
+                              % (self.options.process_file, prev_tty_owner,
+                                 tty_owner, self.options.process_file))
+                    sys.exit(1)
+            except ConfigParserError:
                 log.warning('Broken deploy_process.ini file')
         self.update_prompt()
         if self.options.run:
@@ -111,6 +129,14 @@ class DeployCmd(cmd.Cmd):
                 return True
             oldcwd = os.getcwd()
             os.chdir(self.options.work_dir)
+            if os.path.exists('deploy/stage.lock'):
+                with open('deploy/stage.lock', 'r') as f:
+                    run_stage = f.read()
+                    log.error('Stage %s is already running' % run_stage)
+                    return False
+            f = open('deploy/stage.lock', 'w')
+            f.write('%s on %s' % (self.stage_name(self.next_stage), tty_path))
+            f.close()
             time_init = datetime.now()
             logWrap = LogWrapper()
             env_fifo = EnvFIFO()
@@ -125,6 +151,7 @@ class DeployCmd(cmd.Cmd):
             self.p.close()
             self.cur_status = self.p.exitstatus
             env_fifo.close()
+            os.unlink('deploy/stage.lock')
             os.chdir(oldcwd)
             time_done = datetime.now()
             run_time = (time_done - time_init)
@@ -132,7 +159,7 @@ class DeployCmd(cmd.Cmd):
                        self.stage_name(self.next_stage),
                        self.cur_status,
                        run_time)
-            if int(self.cur_status) == 0:
+            if self.cur_status is not None and int(self.cur_status) == 0:
                 log.info(exit_log)
             else:
                 log.error(exit_log)
@@ -157,6 +184,9 @@ class DeployCmd(cmd.Cmd):
                 conf.add_section('position')
                 conf.set('position', 'current',
                          self.stage_nums[self.cur_stage])
+                conf.add_section('tty')
+                conf.set('tty', 'path', tty_path)
+                conf.set('tty', 'owner', tty_owner)
                 conf.write(f)
         elif os.path.exists(self.options.process_file):
             os.unlink(self.options.process_file)
@@ -291,7 +321,7 @@ class EnvFIFO(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         self.daemon = True
-        self.fifo_name = os.path.join(os.environ.get('HOME'), 'deploy.cmd')
+        self.fifo_name = 'deploy/deploy.cmd'
         if os.path.exists(self.fifo_name):
             os.unlink(self.fifo_name)
         os.mkfifo(self.fifo_name)
@@ -354,6 +384,8 @@ class ColoredFormatter(logging.Formatter):
 
 
 def main():
+    global tty_path
+    global tty_owner
     optionparser = OptionParser(usage="usage: %prog [options]")
     optionparser.add_option("-s", "--stages-dir", dest="stages_dir",
                             default=os.path.join("deploy", "stages"),
@@ -383,8 +415,14 @@ def main():
     if not os.path.exists(options.work_dir):
         print "Working directory not found: %s" % options.work_dir
         sys.exit(1)
+    if sys.stdin.isatty():
+        tty_path = os.ttyname(sys.stdin.fileno())
+        tty_owner = pwd.getpwuid(os.stat(tty_path).st_uid).pw_name
+    else:
+        print "You must have a TTY"
+        sys.exit(1)
     logging.basicConfig(filename=options.log_file,
-                        format='%(asctime)s %(message)s',
+                        format='%(asctime)s (' + tty_owner + ') %(message)s',
                         level=logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
