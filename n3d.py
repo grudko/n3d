@@ -308,11 +308,10 @@ class LogWrapper():
 
 
 def set_env(line):
-    if line == '':
+    if not line or not line.strip():
         return
     k, v = [s.strip() for s in line.partition('=')[::2]]
-    if v == '':
-        v = '1'
+    v = v or '1'
     log.info("New ENV variable: %s=%s" % (k, v))
     os.environ[k] = v
 
