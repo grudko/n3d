@@ -308,10 +308,11 @@ class LogWrapper():
 
 
 def set_env(line):
-    env_s = [s.strip() for s in line.split('=', 1)]
-    k, v = env_s[0], '1'
-    if len(env_s) > 1:
-        v = env_s[1]
+    if line == '':
+        return
+    k, v = [s.strip() for s in line.partition('=')[::2]]
+    if v == '':
+        v = '1'
     log.info("New ENV variable: %s=%s" % (k, v))
     os.environ[k] = v
 
@@ -404,6 +405,11 @@ def main():
                             deployment process [ default: %default ]")
     optionparser.add_option("-E", "--env", action="append", dest="envs",
                             help="Add environment variable for stages")
+    optionparser.add_option("-c", "--envvars", dest="envvars",
+                            default=os.path.join("deploy",
+                                                 "envvars"),
+                            help="file with environment variables\
+                            in KEY=value format [ default: %default ]")
     optionparser.add_option("-r", "--run", action="store_true", dest="run",
                             default=False,
                             help="run all stages while stage exit status is 0,\
@@ -428,6 +434,10 @@ def main():
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(ColoredFormatter())
     log.addHandler(ch)
+    if os.path.exists(options.envvars):
+        with open(options.envvars, 'r') as f:
+            for line in f:
+                set_env(line)
     if options.envs:
         for line in options.envs:
             set_env(line)
