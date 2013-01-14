@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
     name='n3d',
-    version='0.2.5',
+    version='0.2.6',
     description='Utility for step-by-step application deployment',
     author='Anton Grudko',
     author_email='grudko@gmail.com',
