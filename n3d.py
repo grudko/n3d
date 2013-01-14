@@ -170,12 +170,15 @@ class DeployCmd(cmd.Cmd):
         """ List all stages """
         for index, stage_name in enumerate(self.stage_nums):
             if index == self.cur_stage:
-                comment = " (current stage)"
+                comment = "(current stage)"
+                stage_marker = '*'
             elif index == self.next_stage:
-                comment = " (next stage)"
+                comment = "(next stage)"
+                stage_marker = '>'
             else:
                 comment = ""
-            log.info("Stage %i: %s%s" % (index, stage_name, comment))
+                stage_marker = ' '
+            log.info("%s%2i: %s %s" % (stage_marker, index, stage_name, comment))
 
     def write_stage(self):
         if self.cur_stage is not None:
