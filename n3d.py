@@ -178,7 +178,8 @@ class DeployCmd(cmd.Cmd):
             else:
                 comment = ""
                 stage_marker = ' '
-            log.info("%s%2i: %s %s" % (stage_marker, index, stage_name, comment))
+            log.info("%s%2i: %s %s" % (stage_marker, index, stage_name,
+                                       comment))
 
     def write_stage(self):
         if self.cur_stage is not None:
@@ -439,6 +440,7 @@ def main():
     if os.path.exists(options.envvars):
         with open(options.envvars, 'r') as f:
             for line in f:
+                line = line.split('#', 1)[0]
                 set_env(line)
     if options.envs:
         for line in options.envs:
