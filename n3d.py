@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import sys
+import stat
 import inspect
 import cmd
 import logging
@@ -44,8 +45,12 @@ class DeployCmd(cmd.Cmd):
                 if stage_action in ('update', 'rollback'):
                     if stage_name not in self.stages:
                         self.stages[stage_name] = dict()
-                    self.stages[stage_name][stage_action] = os.path.join(
-                        root, stage_f_name)
+                    stage_path = os.path.join(root, stage_f_name)
+                    self.stages[stage_name][stage_action] = stage_path
+                    try:
+                        os.chmod(stage_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
+                    except IOError:
+                        pass
         self.stage_nums = sorted(self.stages.keys())
 
         if os.path.exists(self.options.process_file):
