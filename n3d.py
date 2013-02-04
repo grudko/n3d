@@ -29,6 +29,9 @@ tty_owner = None
 
 class DeployCmd(cmd.Cmd):
 
+    names = ['continue', 'do', 'undo', 'retry', 'list', 'exit',
+             'help']
+
     def preloop(self):
         self.stages = dict()
         self.stage_nums = list()
@@ -48,7 +51,9 @@ class DeployCmd(cmd.Cmd):
                     stage_path = os.path.join(root, stage_f_name)
                     self.stages[stage_name][stage_action] = stage_path
                     try:
-                        os.chmod(stage_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
+                        os.chmod(stage_path, stat.S_IREAD | stat.S_IWRITE |
+                                 stat.S_IEXEC)
+                        print stage_path
                     except IOError:
                         pass
         self.stage_nums = sorted(self.stages.keys())
@@ -272,21 +277,27 @@ class DeployCmd(cmd.Cmd):
         return True
 
     def completenames(self, text, *ignored):
-        names = ['continue', 'do', 'undo', 'retry', 'list', 'exit',
-                 'help']
-        return [a for a in names if a.startswith(text)]
+        return [a for a in self.names if a.startswith(text)]
 
     def emptyline(self):
         """Do nothing on empty input line"""
         pass
 
     def precmd(self, line):
-        if line != '':
-            if line == 'EOF':
+        cmd_name = line
+        if cmd_name != '':
+            if cmd_name == 'EOF':
                 log.info('exit')
             else:
-                log.info(line)
-        return cmd.Cmd.precmd(self, line)
+                if cmd_name not in self.names:
+                    possible_names = [a for a in self.names
+                                      if a.startswith(line)]
+                    if len(possible_names) == 1:
+                        cmd_name = possible_names[0]
+                    else:
+                        log.info(' '.join(possible_names))
+                log.info(cmd_name)
+        return cmd.Cmd.precmd(self, cmd_name)
 
     def postcmd(self, stop, line):
         self.update_prompt()
