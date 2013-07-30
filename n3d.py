@@ -29,13 +29,13 @@ tty_owner = None
 
 class DeployCmd(cmd.Cmd):
 
-    names = ['continue', 'do', 'undo', 'retry', 'list', 'exit',
+    names = ['continue', 'do ', 'undo', 'retry', 'list', 'exit',
              'help']
 
     def preloop(self):
         self.stages = dict()
         self.stage_nums = list()
-        self.stages_done = dict()
+        self.stage_aliases = dict()
         self.next_stage = 0
         self.cur_stage = None
         self.cur_status = None
@@ -57,7 +57,9 @@ class DeployCmd(cmd.Cmd):
                     except IOError:
                         pass
         self.stage_nums = sorted(self.stages.keys())
-
+        for index, stage_name in enumerate(self.stage_nums):
+            for alias in stage_name.split('-', 1):
+                self.stage_aliases[alias] = index
         if os.path.exists(self.options.process_file):
             conf = ConfigParser()
             try:
@@ -232,12 +234,15 @@ class DeployCmd(cmd.Cmd):
             return True
 
     def do_do(self, line):
-        """ Apply next or specified stage. Usage: do [number_of_stage] """
+        """ Apply next or specified stage.
+            Usage: do [number_or_name_of_stage] """
         if line != '':
-            if not line.isdigit():
-                log.info("Usage: do [number_of_stage]")
+            if line in self.stage_aliases.keys():
+                stage_num = self.stage_aliases[line]
+            else:
+                log.info("Usage: do [number_or_name_of_stage]")
                 return False
-            stage_num = int(line)
+                stage_num = int(line)
             if stage_num in range(0, len(self.stages)):
                 self.next_stage = stage_num
             else:
@@ -278,6 +283,9 @@ class DeployCmd(cmd.Cmd):
 
     def completenames(self, text, *ignored):
         return [a for a in self.names if a.startswith(text)]
+
+    def complete_do(self, text, line, *ignored):
+        return [a for a in self.stage_aliases.keys() if a.startswith(line[3:])]
 
     def emptyline(self):
         """Do nothing on empty input line"""
