@@ -83,6 +83,11 @@ class DeployCmd(cmd.Cmd):
             except ConfigParserError:
                 log.warning('Broken deploy_process.ini file')
         self.update_prompt()
+        try:
+            import readline
+            readline.parse_and_bind('set show-all-if-unmodified on')
+        except ImportError:
+            pass
         if self.options.run:
             self.cmdqueue.append('continue')
 
