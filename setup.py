@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from distutils.core import setup
+from setuptools import setup
 
 setup(
     name='n3d',
@@ -8,7 +8,6 @@ setup(
     author='Anton Grudko',
     author_email='grudko@gmail.com',
     url="http://github.com/grudko/n3d",
-    platforms=('Any',),
     py_modules=['n3d'],
     install_requires=['pexpect', 'termcolor'],
     entry_points={

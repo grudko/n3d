@@ -239,6 +239,8 @@ class DeployCmd(cmd.Cmd):
         if line != '':
             if line in self.stage_aliases.keys():
                 stage_num = self.stage_aliases[line]
+            elif line in self.stage_nums:
+                stage_num = self.stage_nums.index(line)
             else:
                 log.info("Usage: do [number_or_name_of_stage]")
                 return False
@@ -285,7 +287,13 @@ class DeployCmd(cmd.Cmd):
         return [a for a in self.names if a.startswith(text)]
 
     def complete_do(self, text, line, *ignored):
-        return [a for a in self.stage_aliases.keys() if a.startswith(line[3:])]
+        aliases = [a for a in self.stage_aliases.keys()
+                   if a.startswith(line[3:])]
+        nums = [self.stage_aliases[a] for a in aliases]
+        names = dict()
+        for i in nums:
+            names[i]= self.stage_nums[i]
+        return names.values()
 
     def emptyline(self):
         """Do nothing on empty input line"""
