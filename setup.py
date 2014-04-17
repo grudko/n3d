@@ -3,13 +3,13 @@ from setuptools import setup
 
 setup(
     name='n3d',
-    version='0.3.3',
+    version='0.3.4',
     description='Utility for step-by-step application deployment',
     author='Anton Grudko',
     author_email='grudko@gmail.com',
     url="http://github.com/grudko/n3d",
     py_modules=['n3d'],
-    install_requires=['pexpect', 'termcolor'],
+    install_requires=['pexpect == 2.4', 'termcolor'],
     entry_points={
         'console_scripts': [
             'n3d = n3d:main',

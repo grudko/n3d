@@ -29,7 +29,7 @@ tty_owner = None
 
 class DeployCmd(cmd.Cmd):
 
-    names = ['continue', 'do ', 'undo', 'retry', 'list', 'exit',
+    names = ['cat', 'continue', 'do ', 'undo', 'retry', 'list', 'exit',
              'help']
 
     def preloop(self):
@@ -263,6 +263,37 @@ class DeployCmd(cmd.Cmd):
             self.write_stage()
             self.reload_deploy()
 
+    def do_cat(self, line):
+        """ Print next or specified stage.
+            Usage: cat [number_or_name_of_stage][.rollback]"""
+        cat_stage = None
+        action = 'update'
+        if line != '':
+            line_stage, line_ext = os.path.splitext(line)
+            if line_ext == '.rollback':
+                action = 'rollback'
+            if line_stage in self.stage_aliases.keys():
+                stage_num = self.stage_aliases[line_stage]
+            elif line_stage in self.stage_nums:
+                stage_num = self.stage_nums.index(line_stage)
+            else:
+                log.info("Usage: cat [number_or_name_of_stage][.rollback]")
+                return False
+                stage_num = int(line)
+            if stage_num in range(0, len(self.stages)):
+                cat_stage = stage_num
+            else:
+                log.error('No such stage')
+                return False
+        stage = self.stages[self.stage_nums[cat_stage]]
+        if not stage.get(action):
+            log.error('Stage %s has no %s action' % (
+                self.stage_name(cat_stage), action))
+            return False
+        with open(stage[action], 'r') as f:
+            print f.readline()
+        return False
+
     def do_retry(self, line):
         """ Apply current stage again """
         if self.cur_stage is not None:
@@ -292,14 +323,23 @@ class DeployCmd(cmd.Cmd):
     def completenames(self, text, *ignored):
         return [a for a in self.names if a.startswith(text)]
 
-    def complete_do(self, text, line, *ignored):
+    def name_completer(self, text, line, *ignored):
         aliases = [a for a in self.stage_aliases.keys()
-                   if a.startswith(line[3:])]
+                   if a.startswith(line)]
         nums = [self.stage_aliases[a] for a in aliases]
         names = dict()
         for i in nums:
             names[i]= self.stage_nums[i]
         return names.values()
+
+    def complete_do(self, text, line, *ignored):
+        return self.name_completer(text, line[3:], *ignored)
+
+    def complete_undo(self, text, line, *ignored):
+        return self.name_completer(text, line[5:], *ignored)
+
+    def complete_cat(self, text, line, *ignored):
+        return self.name_completer(text, line[4:], *ignored)
 
     def emptyline(self):
         """Do nothing on empty input line"""
