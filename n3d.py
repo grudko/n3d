@@ -53,7 +53,6 @@ class DeployCmd(cmd.Cmd):
                     try:
                         os.chmod(stage_path, stat.S_IREAD | stat.S_IWRITE |
                                  stat.S_IEXEC)
-                        print stage_path
                     except IOError:
                         pass
         self.stage_nums = sorted(self.stages.keys())
@@ -90,6 +89,8 @@ class DeployCmd(cmd.Cmd):
             pass
         if self.options.run:
             self.cmdqueue.append('continue')
+        else:
+            self.do_list('')
 
     def stage_name(self, stage):
         if stage is not None and stage >= 0 and stage < len(self.stages):
@@ -180,7 +181,7 @@ class DeployCmd(cmd.Cmd):
                 log.info(exit_log)
             else:
                 log.error(exit_log)
-            log.info('\n\n\n')
+            self.do_list('')
             return True
 
     def do_list(self, line):
