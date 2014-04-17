@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='n3d',
-    version='0.3.2',
+    version='0.3.3',
     description='Utility for step-by-step application deployment',
     author='Anton Grudko',
     author_email='grudko@gmail.com',
